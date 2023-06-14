@@ -41,8 +41,8 @@ struct Message {}
 
 #[tokio::main]
 async fn main() {
-    cast().await.unwrap();
     tokio::spawn(async {
-        listen().await.unwrap();
+        cast().await.unwrap();
     });
+    listen().await.unwrap();
 }
