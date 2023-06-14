@@ -11,10 +11,12 @@ async fn listen() -> Result<()> {
     socket.join_multicast_v4(MULTICAST_ADDR, IFACE)?;
 
     loop {
-        let mut buf = [0u8; 1024];
+        let mut buf = [0u8; 2048];
         let (len, source) = socket.recv_from(&mut buf).await?;
-        let msg = String::from_utf8_lossy(&mut buf);
-        println!("{source}: {msg}")
+        let packet = bincode::deserialize::<Packet>(&buf[..len]).unwrap();
+
+        // let msg = String::from_utf8_lossy(&mut buf);
+        println!("{}: {}", packet.username, packet.msg);
     }
 
     Ok(())
@@ -27,9 +29,17 @@ async fn cast(mut rx: tokio::sync::mpsc::Receiver<String>) -> Result<()> {
         .await?;
     socket.set_multicast_loop_v4(false)?;
 
+    let username = std::env::args().nth(1).unwrap_or("npc".to_string());
+
     loop {
         if let Ok(msg) = rx.try_recv() {
-            socket.send(msg.as_bytes()).await?;
+            let bytes = bincode::serialize(&Packet {
+                username: username.to_string(),
+                msg,
+            })
+            .unwrap();
+
+            socket.send(&bytes[..bytes.len()]).await?;
         }
         std::thread::sleep(Duration::from_millis(300));
     }
@@ -38,7 +48,10 @@ async fn cast(mut rx: tokio::sync::mpsc::Receiver<String>) -> Result<()> {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Message {}
+struct Packet {
+    username: String,
+    msg: String,
+}
 
 #[tokio::main]
 async fn main() {
@@ -54,6 +67,6 @@ async fn main() {
     loop {
         let mut msg = String::new();
         std::io::stdin().read_line(&mut msg).unwrap();
-        tx.send(msg).await.unwrap();
+        tx.send(msg.trim().to_string()).await.unwrap();
     }
 }
