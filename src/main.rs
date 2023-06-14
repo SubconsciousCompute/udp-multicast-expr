@@ -22,8 +22,9 @@ fn listen() -> Result<()> {
 }
 
 fn cast() -> Result<()> {
-    let socket = UdpSocket::bind(ADDR)?;
+    let socket = UdpSocket::bind(SocketAddrV4::new(IFACE, 0))?;
     socket.connect(SocketAddrV4::new(MULTICAST_ADDR, 5123))?;
+    socket.set_multicast_loop_v4(false)?;
 
     let data = "hi";
 
@@ -37,7 +38,7 @@ fn cast() -> Result<()> {
 
 fn main() {
     std::thread::spawn(|| {
-        cast();
+        cast().unwrap();
     });
     listen().unwrap();
 }
