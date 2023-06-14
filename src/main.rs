@@ -6,7 +6,7 @@ use std::{
 
 const MULTICAST_ADDR: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 1);
 const IFACE: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
-const ADDR: SocketAddrV4 = SocketAddrV4::new(IFACE, 9999);
+const ADDR: SocketAddrV4 = SocketAddrV4::new(IFACE, 5123);
 
 fn listen() -> Result<()> {
     let socket = UdpSocket::bind(ADDR)?;
@@ -23,7 +23,7 @@ fn listen() -> Result<()> {
 
 fn cast() -> Result<()> {
     let socket = UdpSocket::bind(ADDR)?;
-    socket.connect(SocketAddrV4::new(MULTICAST_ADDR, 9999))?;
+    socket.connect(SocketAddrV4::new(MULTICAST_ADDR, 5123))?;
 
     let data = "hi";
 
