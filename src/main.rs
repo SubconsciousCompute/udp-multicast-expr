@@ -109,21 +109,11 @@ struct Discover {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum TaskRequest {
+pub enum Task {
     Add(u32, u32),
     GenRand,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TaskResponse {
-    Add(u64),
-    GenRand(u32),
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum Task {
-    Query(TaskRequest),
-    Response(TaskResponse),
+    AddRes(u32),
+    GenRandRes(u32),
 }
 
 #[tokio::main]
@@ -157,11 +147,9 @@ async fn main() {
     loop {
         let mut buf = [0; 2048];
 
-        let num = rand::random::<u8>();
-
-        let task = match num {
-            1 => Task::Query(TaskRequest::Add(rand::random(), rand::random())),
-            _ => Task::Query(TaskRequest::GenRand),
+        let task = match rand::random() {
+            1..=500 => Task::Add(rand::random(), rand::random()),
+            _ => Task::GenRand,
         };
 
         select! {
@@ -173,20 +161,20 @@ async fn main() {
                 let task = bincode::deserialize::<Task>(&buf[..data]).unwrap();
 
                 let task = match task {
-                    Task::Query(TaskRequest::Add(x, y)) => {
+                    Task::Add(x, y) => {
                         println!("RECV TASK: ADD({x},{y})");
-                        Some(Task::Response(TaskResponse::Add((x + y).into())))
+                        Some(Task::AddRes(x + y))
                     },
-                    Task::Query(TaskRequest::GenRand) => {
+                    Task::GenRand => {
                         println!("RECV TASK: GenRand");
-                        Some(Task::Response(TaskResponse::GenRand(rand::random())))
+                        Some(Task::GenRandRes(rand::random()))
                     }
-                    Task::Response(TaskResponse::Add(sum)) => {
+                    Task::AddRes(sum) => {
                         println!("RESPONSE FOR A TASK: ADD: {sum}");
                         None
 
                     }
-                    Task::Response(TaskResponse::GenRand(rand)) => {
+                    Task::GenRandRes(rand) => {
                         println!("RESPONSE FOR A TASK: GenRand: {rand}");
                         None
                     }
