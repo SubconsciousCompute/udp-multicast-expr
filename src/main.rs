@@ -117,7 +117,7 @@ pub enum TaskRequest {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum TaskResponse {
     Add(u64),
-    GenRand(usize),
+    GenRand(u32),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
