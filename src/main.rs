@@ -1,25 +1,80 @@
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+    time::SystemTime,
+};
 use tokio::{io::Result, net::UdpSocket, time::Duration};
 
 const MULTICAST_ADDR: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 1);
 const IFACE: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
 const ADDR: SocketAddrV4 = SocketAddrV4::new(IFACE, 5123);
 
+struct Bookie {
+    entries: HashMap<String, (String, u16, SystemTime)>,
+}
+
+impl Bookie {
+    pub fn new() -> Self {
+        Self {
+            entries: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, msg: &Discover) {
+        self.entries.insert(
+            msg.uuid.to_string(),
+            (msg.ip.to_string(), msg.port, std::time::SystemTime::now()),
+        );
+    }
+
+    pub fn purge(self) -> Self {
+        let entries: HashMap<String, (String, u16, SystemTime)> = self
+            .entries
+            .into_iter()
+            .filter(|(hash, (ip, port, time))| {
+                if SystemTime::now()
+                    .duration_since(time.clone())
+                    .unwrap()
+                    .as_secs()
+                    > 60
+                {
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
+
+        Self { entries }
+    }
+}
+
 async fn listen() -> Result<()> {
     let socket = UdpSocket::bind(ADDR).await?;
     socket.join_multicast_v4(MULTICAST_ADDR, IFACE)?;
 
+    let mut bookie = Bookie::new();
+
     loop {
         let mut buf = [0u8; 2048];
-        let (len, source) = socket.recv_from(&mut buf).await?;
-        let mut packet = bincode::deserialize::<Discover>(&buf[..len]).unwrap();
-        packet.ip = match source.ip() {
-            IpAddr::V4(addr) => addr,
-            _ => panic!(),
-        };
+        if let Ok(Ok((len, source))) = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            socket.recv_from(&mut buf),
+        )
+        .await
+        {
+            let mut packet = bincode::deserialize::<Discover>(&buf[..len]).unwrap();
+            packet.ip = match source.ip() {
+                IpAddr::V4(addr) => addr,
+                _ => panic!(),
+            };
 
-        println!("DISCOVERY: {packet:?}")
+            println!("DISCOVERY: {packet:?}");
+            bookie.insert(&packet);
+        } else {
+            bookie = bookie.purge();
+        }
     }
 
     Ok(())
@@ -45,6 +100,7 @@ async fn cast(mut rx: tokio::sync::mpsc::Receiver<String>, msg: Discover) -> Res
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Discover {
+    uuid: String,
     ip: Ipv4Addr,
     port: u16,
 }
@@ -55,11 +111,13 @@ async fn main() {
 
     let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
     let running_on = socket.local_addr().unwrap();
+    let uuid = machine_uid::get().unwrap();
 
     tokio::spawn(async move {
         cast(
             rx,
             Discover {
+                uuid,
                 ip: match running_on.ip() {
                     IpAddr::V4(addr) => addr,
                     _ => panic!(),
