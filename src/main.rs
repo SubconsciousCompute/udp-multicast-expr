@@ -109,21 +109,21 @@ struct Discover {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum TaskReq {
+pub enum TaskRequest {
     Add(u32, u32),
     GenRand,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub enum TaskRes {
+pub enum TaskResponse {
     Add(u64),
-    GenRand(u64),
+    GenRand(usize),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Task {
-    request: Option<TaskReq>,
-    response: Option<TaskRes>,
+pub enum Task {
+    Query(TaskRequest),
+    Response(TaskResponse),
 }
 
 #[tokio::main]
@@ -157,18 +157,44 @@ async fn main() {
     loop {
         let mut buf = [0; 1024];
 
+        let num = rand::random::<u8>();
+
+        let task = match num {
+            1 => Task::Query(TaskRequest::Add(rand::random(), rand::random())),
+            _ => Task::Query(TaskRequest::GenRand),
+        };
+
         select! {
             val = rx_listener.recv() => {
                 let (ip, port) = val.unwrap();
-                let task = Task {
-                    request: Some(TaskReq::Add(10, 20)),
-                    response: None
-                };
                 socket.send_to(&bincode::serialize(&task).unwrap(), format!("{}:{}", ip, port)).await.unwrap();
             }
             Ok((data, source)) = socket.recv_from(&mut buf) => {
                 let task = bincode::deserialize::<Task>(&buf[..data]).unwrap();
-                println!("Got task: {task:?}");
+
+                let task = match task {
+                    Task::Query(TaskRequest::Add(x, y)) => {
+                        println!("RECV TASK: ADD({x},{y})");
+                        Some(Task::Response(TaskResponse::Add((x + y).into())))
+                    },
+                    Task::Query(TaskRequest::GenRand) => {
+                        println!("RECV TASK: GenRand");
+                        Some(Task::Response(TaskResponse::GenRand(rand::random())))
+                    }
+                    Task::Response(TaskResponse::Add(sum)) => {
+                        println!("RESPONSE FOR A TASK: ADD: {sum}");
+                        None
+
+                    }
+                    Task::Response(TaskResponse::GenRand(rand)) => {
+                        println!("RESPONSE FOR A TASK: GenRand: {rand}");
+                        None
+                    }
+                };
+
+                if task.is_some() {
+                    socket.send_to(&bincode::serialize(&task).unwrap(), source).await.unwrap();
+                }
 
             }
         }
