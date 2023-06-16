@@ -73,6 +73,14 @@ async fn listen() -> Result<()> {
 
             println!("DISCOVERY: {packet:?}");
             bookie.insert(&packet);
+
+            socket
+                .send_to(
+                    "lmfao bruh".as_bytes(),
+                    format!("{}:{}", packet.ip, packet.port),
+                )
+                .await
+                .unwrap();
         } else {
             bookie = bookie.purge();
         }
@@ -136,7 +144,11 @@ async fn main() {
     loop {
         let mut buf = [0; 1024];
         let (data, source) = socket.recv_from(&mut buf).await.unwrap();
-        println!("{data} bytes of data from {}", source.ip());
-        socket.send_to(&buf[..data], source);
+        println!(
+            "{data} bytes of data from {}: {}",
+            source.ip(),
+            String::from_utf8_lossy(&buf[..data])
+        );
+        socket.send_to(&buf[..data], source).await.unwrap();
     }
 }
