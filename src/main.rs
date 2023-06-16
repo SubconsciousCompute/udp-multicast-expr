@@ -155,7 +155,7 @@ async fn main() {
     });
 
     loop {
-        let mut buf = [0; 1024];
+        let mut buf = [0; 2048];
 
         let num = rand::random::<u8>();
 
