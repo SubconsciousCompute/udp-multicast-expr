@@ -39,6 +39,7 @@ impl Bookie {
                     .as_secs()
                     > 60
                 {
+                    println!("PURGING {hash}@{ip}:{port}");
                     false
                 } else {
                     true
