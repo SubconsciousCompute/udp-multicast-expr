@@ -108,6 +108,24 @@ struct Discover {
     port: u16,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub enum TaskReq {
+    Add(u32, u32),
+    GenRand,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum TaskRes {
+    Add(u64),
+    GenRand(u64),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Task {
+    request: Option<TaskReq>,
+    response: Option<TaskRes>,
+}
+
 #[tokio::main]
 async fn main() {
     let (tx, rx) = tokio::sync::mpsc::channel(10);
@@ -142,14 +160,16 @@ async fn main() {
         select! {
             val = rx_listener.recv() => {
                 let (ip, port) = val.unwrap();
-                socket.send_to("hi".as_bytes(), format!("{}:{}", ip, port)).await.unwrap();
+                let task = Task {
+                    request: Some(TaskReq::Add(10, 20)),
+                    response: None
+                };
+                socket.send_to(&bincode::serialize(&task).unwrap(), format!("{}:{}", ip, port)).await.unwrap();
             }
             Ok((data, source)) = socket.recv_from(&mut buf) => {
-                println!(
-                    "{data} bytes of data from {}: {}",
-                    source.ip(),
-                    String::from_utf8_lossy(&buf[..data])
-                );
+                let task = bincode::deserialize::<Task>(&buf[..data]).unwrap();
+                println!("Got task: {task:?}");
+
             }
         }
     }
