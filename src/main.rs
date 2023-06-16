@@ -4,7 +4,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
     time::SystemTime,
 };
-use tokio::{io::Result, net::UdpSocket, time::Duration};
+use tokio::{io::Result, net::UdpSocket, select, time::Duration};
 
 const MULTICAST_ADDR: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 1);
 const IFACE: Ipv4Addr = Ipv4Addr::new(0, 0, 0, 0);
@@ -51,7 +51,7 @@ impl Bookie {
     }
 }
 
-async fn listen() -> Result<()> {
+async fn listen(mut tx: tokio::sync::mpsc::Sender<(Ipv4Addr, u16)>) -> Result<()> {
     let socket = UdpSocket::bind(ADDR).await?;
     socket.join_multicast_v4(MULTICAST_ADDR, IFACE)?;
 
@@ -74,13 +74,7 @@ async fn listen() -> Result<()> {
             println!("DISCOVERY: {packet:?}");
             bookie.insert(&packet);
 
-            socket
-                .send_to(
-                    "lmfao bruh".as_bytes(),
-                    format!("{}:{}", packet.ip, packet.port),
-                )
-                .await
-                .unwrap();
+            tx.try_send((packet.ip, packet.port));
         } else {
             bookie = bookie.purge();
         }
@@ -117,6 +111,7 @@ struct Discover {
 #[tokio::main]
 async fn main() {
     let (tx, rx) = tokio::sync::mpsc::channel(10);
+    let (tx_listener, mut rx_listener) = tokio::sync::mpsc::channel(10);
 
     let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
     let running_on = socket.local_addr().unwrap();
@@ -138,17 +133,24 @@ async fn main() {
         .unwrap();
     });
     tokio::spawn(async {
-        listen().await.unwrap();
+        listen(tx_listener).await.unwrap();
     });
 
     loop {
         let mut buf = [0; 1024];
-        let (data, source) = socket.recv_from(&mut buf).await.unwrap();
-        println!(
-            "{data} bytes of data from {}: {}",
-            source.ip(),
-            String::from_utf8_lossy(&buf[..data])
-        );
-        socket.send_to(&buf[..data], source).await.unwrap();
+
+        select! {
+            val = rx_listener.recv() => {
+                let (ip, port) = val.unwrap();
+                socket.send_to("hi".as_bytes(), format!("{}:{}", ip, port)).await.unwrap();
+            }
+            Ok((data, source)) = socket.recv_from(&mut buf) => {
+                println!(
+                    "{data} bytes of data from {}: {}",
+                    source.ip(),
+                    String::from_utf8_lossy(&buf[..data])
+                );
+            }
+        }
     }
 }
