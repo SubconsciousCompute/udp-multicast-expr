@@ -74,7 +74,7 @@ async fn listen(mut tx: tokio::sync::mpsc::Sender<(Ipv4Addr, u16)>) -> Result<()
             println!("DISCOVERY: {packet:?}");
             bookie.insert(&packet);
 
-            tx.try_send((packet.ip, packet.port));
+            // tx.try_send((packet.ip, packet.port));
         } else {
             bookie = bookie.purge();
         }
